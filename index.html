@@ -678,7 +678,7 @@
     bar.style.width = (isFinite(pct)?pct:0) + '%';
   });
 
-  var autoScrollOn = false, autoScrollRAF = null, lastTs = null;
+  var autoScrollOn = false, autoScrollRAF = null, lastTs = null, autoScrollGraceUntil = 0;
   var iconPlay = document.getElementById('autoScrollIconPlay');
   var iconPause = document.getElementById('autoScrollIconPause');
   function stopAutoScroll(){
@@ -696,7 +696,7 @@
     lastTs = ts;
     var h = document.documentElement;
     var maxScroll = h.scrollHeight - h.clientHeight;
-    if(h.scrollTop >= maxScroll - 2){
+    if(maxScroll > 0 && h.scrollTop >= maxScroll - 2){
       stopAutoScroll();
       return;
     }
@@ -706,16 +706,24 @@
   function startAutoScroll(){
     autoScrollOn = true;
     lastTs = null;
+    // abaikan sentuhan/scroll "nyasar" sesaat setelah tombol Buka Undangan
+    // ditekan, supaya auto-scroll tidak langsung berhenti sendiri di HP.
+    autoScrollGraceUntil = Date.now() + 700;
     autoScrollBtn.classList.add('on');
     iconPlay.style.display = 'none';
     iconPause.style.display = '';
+    if(autoScrollRAF){ cancelAnimationFrame(autoScrollRAF); }
     autoScrollRAF = requestAnimationFrame(autoScrollStep);
   }
   autoScrollBtn.addEventListener('click', function(){
     if(autoScrollOn){ stopAutoScroll(); } else { startAutoScroll(); }
   });
-  window.addEventListener('wheel', function(){ if(autoScrollOn) stopAutoScroll(); }, {passive:true});
-  window.addEventListener('touchmove', function(){ if(autoScrollOn) stopAutoScroll(); }, {passive:true});
+  window.addEventListener('wheel', function(){
+    if(autoScrollOn && Date.now() > autoScrollGraceUntil) stopAutoScroll();
+  }, {passive:true});
+  window.addEventListener('touchmove', function(){
+    if(autoScrollOn && Date.now() > autoScrollGraceUntil) stopAutoScroll();
+  }, {passive:true});
 
   var target = new Date("2026-09-23T09:00:00+07:00").getTime();
   function tick(){
