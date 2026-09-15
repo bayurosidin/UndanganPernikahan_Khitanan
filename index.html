@@ -297,7 +297,11 @@
   .ucapan-body{ flex:1; min-width:0; }
   .ucapan-name{ font-weight:700; color:var(--cream); font-size:.95rem; }
   .ucapan-time{ color:var(--text-soft); font-size:.82rem; font-weight:400; }
-  .ucapan-loc{ font-size:.85rem; color:var(--text-soft); margin-top:2px; }
+  .ucapan-status{ display:inline-block; font-size:.72rem; letter-spacing:.04em; font-weight:600; margin-top:4px;
+    padding:3px 10px; border-radius:20px; text-shadow:none; }
+  .ucapan-status.hadir{ background:rgba(140,190,110,.16); color:#9fd18a; border:1px solid rgba(140,190,110,.4); }
+  .ucapan-status.ragu{ background:rgba(212,180,131,.16); color:var(--gold-soft); border:1px solid rgba(212,180,131,.4); }
+  .ucapan-status.tidak{ background:rgba(231,154,118,.16); color:#e79a76; border:1px solid rgba(231,154,118,.4); }
   .ucapan-msg{ font-size:.88rem; color:var(--text); margin-top:10px; background:rgba(255,255,255,.07);
     border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px 14px; }
   .ucapan-empty{ text-align:center; color:var(--text-soft); font-size:.88rem; padding:20px 0; }
@@ -504,7 +508,12 @@
           <input type="text" id="f-nama" maxlength="60" required placeholder="Nama Anda">
         </div>
         <div class="form-group">
-          <input type="text" id="f-asal" maxlength="60" placeholder="Asal Kota">
+          <select id="f-hadir" required>
+            <option value="" disabled selected>Konfirmasi Kehadiran</option>
+            <option value="hadir">Hadir</option>
+            <option value="ragu">Ragu-ragu</option>
+            <option value="tidak">Tidak Hadir</option>
+          </select>
         </div>
         <div class="form-group">
           <textarea id="f-pesan" maxlength="300" required placeholder="Tuliskan pesan"></textarea>
@@ -750,6 +759,12 @@
   document.getElementById('lbClose').addEventListener('click', function(){ lightbox.classList.remove('show'); });
   lightbox.addEventListener('click', function(e){ if(e.target === lightbox) lightbox.classList.remove('show'); });
 
+  // ==== SUMBER DATA UCAPAN (agar terlihat oleh semua tamu) ====
+  // Isi UCAPAN_API_URL dengan URL Web App Google Apps Script Anda.
+  // Selama masih kosong (''), ucapan cuma tersimpan di browser sendiri (tidak dibagikan ke tamu lain).
+  // Cara setup: lihat panduan yang diberikan bersama file ini.
+  var UCAPAN_API_URL = 'https://script.google.com/macros/s/AKfycbydbIwW8SuP6J_-ywUBDFDszvFsbnsbGSVPCywsf6Hf9EEpjGW4CHE3AWMfZ8TfJMdV/exec';
+
   var ucapanListEl = document.getElementById('ucapanList');
   var formMsg = document.getElementById('formMsg');
 
@@ -770,6 +785,8 @@
     return days + ' hari lalu';
   }
 
+  var HADIR_LABEL = { hadir:'Hadir', ragu:'Ragu-ragu', tidak:'Tidak Hadir' };
+
   function renderUcapan(items){
     if(!items.length){
       ucapanListEl.innerHTML = '<p class="ucapan-empty">Jadilah yang pertama mengirimkan ucapan &amp; doa.</p>';
@@ -778,11 +795,12 @@
     items.sort(function(a,b){ return b.ts - a.ts; });
     ucapanListEl.innerHTML = items.map(function(it){
       var initial = (it.nama || '?').trim().charAt(0).toUpperCase();
+      var statusLabel = HADIR_LABEL[it.hadir] || '';
       return '<div class="ucapan-item">'
         + '<div class="ucapan-avatar">'+escapeHtml(initial)+'</div>'
         + '<div class="ucapan-body">'
         + '<span class="ucapan-name">'+escapeHtml(it.nama)+'</span> <span class="ucapan-time">&bull; '+timeAgo(it.ts)+'</span>'
-        + (it.asal ? '<div class="ucapan-loc">di '+escapeHtml(it.asal)+'</div>' : '')
+        + (statusLabel ? '<div><span class="ucapan-status '+it.hadir+'">'+escapeHtml(statusLabel)+'</span></div>' : '')
         + '<div class="ucapan-msg">'+escapeHtml(it.pesan)+'</div>'
         + '</div></div>';
     }).join('');
@@ -797,24 +815,19 @@
     arr.push(entry);
     localStorage.setItem('ucapan_fallback', JSON.stringify(arr));
   }
-  function hasSharedStorage(){
-    return typeof window.storage !== 'undefined' && window.storage && typeof window.storage.list === 'function';
+  function hasRemoteApi(){
+    return !!UCAPAN_API_URL;
   }
 
   async function loadUcapan(){
-    if(hasSharedStorage()){
+    if(hasRemoteApi()){
       try{
-        var listRes = await window.storage.list('ucapan:', true);
-        var keys = (listRes && listRes.keys) ? listRes.keys : [];
-        var items = [];
-        for(var i=0;i<keys.length;i++){
-          try{
-            var r = await window.storage.get(keys[i], true);
-            if(r && r.value){ items.push(JSON.parse(r.value)); }
-          }catch(e){ /* skip missing key */ }
+        var res = await fetch(UCAPAN_API_URL, { method:'GET', cache:'no-store' });
+        var items = await res.json();
+        if(Array.isArray(items)){
+          renderUcapan(items);
+          return;
         }
-        renderUcapan(items.concat(fallbackGetAll()));
-        return;
       }catch(e){ /* fall through to local fallback below */ }
     }
     renderUcapan(fallbackGetAll());
@@ -824,20 +837,21 @@
   document.getElementById('ucapanForm').addEventListener('submit', async function(e){
     e.preventDefault();
     var nama = document.getElementById('f-nama').value.trim();
-    var asal = document.getElementById('f-asal').value.trim();
+    var hadir = document.getElementById('f-hadir').value;
     var pesan = document.getElementById('f-pesan').value.trim();
-    if(!nama || !pesan){ return; }
+    if(!nama || !pesan || !hadir){ return; }
 
     formMsg.textContent = 'Mengirim...';
     formMsg.className = 'form-msg';
 
-    var id = Date.now() + '-' + Math.random().toString(36).slice(2,7);
-    var entry = { nama:nama, asal:asal, pesan:pesan, ts:Date.now() };
+    var entry = { nama:nama, hadir:hadir, pesan:pesan, ts:Date.now() };
     var sent = false;
-    if(hasSharedStorage()){
+    if(hasRemoteApi()){
       try{
-        var res = await window.storage.set('ucapan:'+id, JSON.stringify(entry), true);
-        if(res){ sent = true; }
+        // Tanpa header Content-Type khusus, agar tidak memicu CORS preflight
+        // yang tidak didukung Google Apps Script Web App.
+        await fetch(UCAPAN_API_URL, { method:'POST', body: JSON.stringify(entry) });
+        sent = true;
       }catch(err){ /* fall back to local storage below */ }
     }
     if(!sent){
