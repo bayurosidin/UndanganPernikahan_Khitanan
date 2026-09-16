@@ -578,7 +578,7 @@
 
 </main>
 
-<audio id="bgMusic" loop preload="none"><source src="lagu/slipknot.mp3" type="audio/mpeg"></audio>
+<audio id="bgMusic" loop preload="auto"><source src="lagu/slipknot.mp3" type="audio/mpeg"></audio>
 
 <div id="lightbox">
   <button class="close" id="lbClose" aria-label="Tutup">&times;</button>
@@ -630,6 +630,13 @@
       bgMusic.pause();
       setMusicIcon(false);
     }
+  });
+  // Pengaman tambahan: beberapa browser/WebView kurang konsisten dengan
+  // atribut "loop" bawaan, jadi lagu dipaksa ulang dari awal saat selesai.
+  bgMusic.addEventListener('ended', function(){
+    bgMusic.currentTime = 0;
+    var p = bgMusic.play();
+    if(p && p.catch) p.catch(function(){ setMusicIcon(false); });
   });
 
   var els = document.querySelectorAll('.fade-in');
